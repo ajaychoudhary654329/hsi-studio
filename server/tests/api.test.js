@@ -2,13 +2,15 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const assert = require('node:assert/strict');
+const { after, before, describe, test } = require('node:test');
 
 describe('HSI API gateway', () => {
   let server;
   let dataDirectory;
   const baseUrl = 'http://127.0.0.1:43123';
 
-  beforeAll(async () => {
+  before(async () => {
     dataDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'hsi-api-test-'));
     server = spawn(process.execPath, ['node_modules/tsx/dist/cli.mjs', 'src/index.ts'], {
       cwd: process.cwd(),
@@ -37,7 +39,7 @@ describe('HSI API gateway', () => {
     throw new Error('API server did not become healthy');
   });
 
-  afterAll(async () => {
+  after(async () => {
     if (server) {
       server.kill();
       await new Promise((resolve) => server.once('exit', resolve));
@@ -47,8 +49,8 @@ describe('HSI API gateway', () => {
 
   test('health endpoint is available', async () => {
     const response = await fetch(`${baseUrl}/health`);
-    expect(response.ok).toBe(true);
-    expect(await response.json()).toEqual({ status: 'ok', service: 'hsi-studio-server' });
+    assert.equal(response.ok, true);
+    assert.deepEqual(await response.json(), { status: 'ok', service: 'hsi-studio-server' });
   });
 
   test('login and protected datasets work', async () => {
@@ -57,14 +59,14 @@ describe('HSI API gateway', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'demo@hsistudio.dev', password: 'password123' }),
     });
-    expect(login.status).toBe(200);
+    assert.equal(login.status, 200);
     const { token } = await login.json();
 
     const datasets = await fetch(`${baseUrl}/datasets`, {
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(datasets.status).toBe(200);
-    expect((await datasets.json()).datasets.length).toBeGreaterThan(0);
+    assert.equal(datasets.status, 200);
+    assert.ok((await datasets.json()).datasets.length > 0);
   });
 
   test('refresh tokens rotate and cannot be reused', async () => {
@@ -75,14 +77,14 @@ describe('HSI API gateway', () => {
     });
     const { refreshToken } = await login.json();
     const persistedState = fs.readFileSync(path.join(dataDirectory, 'hsi-state.json'), 'utf-8');
-    expect(persistedState).not.toContain(refreshToken);
+    assert.equal(persistedState.includes(refreshToken), false);
     const refresh = () => fetch(`${baseUrl}/auth/refresh`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
     });
-    expect((await refresh()).status).toBe(200);
-    expect((await refresh()).status).toBe(401);
+    assert.equal((await refresh()).status, 200);
+    assert.equal((await refresh()).status, 401);
   });
 
   test('large uploads fail explicitly when S3 is not configured', async () => {
@@ -103,7 +105,7 @@ describe('HSI API gateway', () => {
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ datasetId: dataset.id, fileName: 'cube.mat', fileType: 'application/octet-stream' }),
     });
-    expect(response.status).toBe(503);
+    assert.equal(response.status, 503);
   });
 
   test('authenticated system status reports service and storage configuration', async () => {
@@ -116,10 +118,10 @@ describe('HSI API gateway', () => {
     const response = await fetch(`${baseUrl}/system/status`, {
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(response.status).toBe(200);
+    assert.equal(response.status, 200);
     const status = await response.json();
-    expect(status.api).toBe('healthy');
-    expect(status.storage.s3).toBe('not configured');
+    assert.equal(status.api, 'healthy');
+    assert.equal(status.storage.s3, 'not configured');
   });
 
   test('detection experiments do not start unsupported training', async () => {
@@ -147,7 +149,7 @@ describe('HSI API gateway', () => {
       headers: { authorization: `Bearer ${token}` },
       body: annotationForm,
     });
-    expect(uploaded.status).toBe(201);
+    assert.equal(uploaded.status, 201);
     const created = await fetch(`${baseUrl}/experiments`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
@@ -160,19 +162,19 @@ describe('HSI API gateway', () => {
         split: { strategy: 'spatial', train: 0.6, val: 0.2, test: 0.2, seed: 42 },
       }),
     });
-    expect(created.status).toBe(201);
+    assert.equal(created.status, 201);
     const { id } = await created.json();
 
     const run = await fetch(`${baseUrl}/experiments/${id}/run`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(run.status).toBe(501);
+    assert.equal(run.status, 501);
 
     const metrics = await fetch(`${baseUrl}/experiments/${id}/metrics`, {
       headers: { authorization: `Bearer ${token}` },
     });
-    expect((await metrics.json()).status).toBe('queued');
+    assert.equal((await metrics.json()).status, 'queued');
   });
 
   test('classification run requires an uploaded cube and labels', async () => {
@@ -194,15 +196,15 @@ describe('HSI API gateway', () => {
         split: { strategy: 'spatial', train: 0.6, val: 0.2, test: 0.2, seed: 42 },
       }),
     });
-    expect(created.status).toBe(201);
+    assert.equal(created.status, 201);
     const { id } = await created.json();
 
     const run = await fetch(`${baseUrl}/experiments/${id}/run`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(run.status).toBe(422);
-    expect((await run.json()).message).toContain('Upload a hyperspectral cube');
+    assert.equal(run.status, 422);
+    assert.ok((await run.json()).message.includes('Upload a hyperspectral cube'));
   });
 
   test('object annotations only enable detection after valid COCO upload', async () => {
@@ -222,9 +224,9 @@ describe('HSI API gateway', () => {
         licence: 'Test-only',
       }),
     });
-    expect(created.status).toBe(201);
+    assert.equal(created.status, 201);
     const dataset = await created.json();
-    expect(dataset.hasObjectAnnotations).toBe(false);
+    assert.equal(dataset.hasObjectAnnotations, false);
 
     const invalidForm = new FormData();
     invalidForm.append('annotations', new Blob(['{"annotations":[]}'], { type: 'application/json' }), 'empty.json');
@@ -233,7 +235,7 @@ describe('HSI API gateway', () => {
       headers: { authorization: `Bearer ${token}` },
       body: invalidForm,
     });
-    expect(invalidUpload.status).toBe(422);
+    assert.equal(invalidUpload.status, 422);
 
     const coco = {
       images: [{ id: 1, file_name: 'scene.tif', width: 10, height: 10 }],
@@ -250,7 +252,7 @@ describe('HSI API gateway', () => {
       headers: { authorization: `Bearer ${token}` },
       body: invalidReferenceForm,
     });
-    expect(invalidReferenceUpload.status).toBe(422);
+    assert.equal(invalidReferenceUpload.status, 422);
 
     const validForm = new FormData();
     validForm.append('annotations', new Blob([JSON.stringify(coco)], { type: 'application/json' }), 'boxes.json');
@@ -259,7 +261,7 @@ describe('HSI API gateway', () => {
       headers: { authorization: `Bearer ${token}` },
       body: validForm,
     });
-    expect(annotationUpload.status).toBe(201);
-    expect((await annotationUpload.json()).hasObjectAnnotations).toBe(true);
+    assert.equal(annotationUpload.status, 201);
+    assert.equal((await annotationUpload.json()).hasObjectAnnotations, true);
   });
 });
