@@ -1,6 +1,6 @@
 # HSI Studio
 
-A working prototype of the AI-Based Hyperspectral Image Classification and Object Detection platform described by the SRS.
+A working prototype of the AI-Based Hyperspectral Image Classification and Object Detection platform.
 
 ## Architecture
 
