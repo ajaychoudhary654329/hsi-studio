@@ -1,29 +1,29 @@
 from __future__ import annotations
 
 import base64
-from typing import Any
-from pathlib import Path
+import json
 import time
 import uuid
+from io import BytesIO
+from pathlib import Path
+from typing import Any
 
+import joblib
 import numpy as np
 import torch
-from torch import nn
-import joblib
-import json
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
+from reportlab.pdfgen import canvas as pdf_canvas
 from sklearn.decomposition import PCA
-from sklearn.svm import SVC
 from sklearn.metrics import (
     accuracy_score,
     cohen_kappa_score,
     confusion_matrix,
     precision_recall_fscore_support,
 )
-from io import BytesIO
-from fastapi.responses import StreamingResponse
-from reportlab.pdfgen import canvas as pdf_canvas
+from sklearn.svm import SVC
+from torch import nn
 
 app = FastAPI(title='HSI Studio ML Service', version='1.0.0')
 
@@ -72,7 +72,7 @@ class TrainRequest(BaseModel):
     allowSynthetic: bool = False
 
     @model_validator(mode='after')
-    def validate_split(self) -> 'TrainRequest':
+    def validate_split(self) -> TrainRequest:
         if self.splitStrategy != 'spatial':
             raise ValueError('Only spatial splits are supported')
         if min(self.trainRatio, self.valRatio, self.testRatio) <= 0 or not np.isclose(
@@ -98,7 +98,7 @@ class DetectRequest(BaseModel):
     modelPath: str | None = None
 
     @model_validator(mode='after')
-    def validate_confidence(self) -> 'DetectRequest':
+    def validate_confidence(self) -> DetectRequest:
         if not 0 <= self.confidenceThreshold <= 1:
             raise ValueError('Confidence threshold must be between 0 and 1')
         return self
@@ -628,9 +628,9 @@ def train(payload: TrainRequest) -> dict[str, Any]:
         },
         'split': {
             'strategy': 'spatial',
-            'train': int(len(train_labels)),
+            'train': len(train_labels),
             'validation': int(np.count_nonzero(val_mask & labeled_mask)),
-            'test': int(len(truth)),
+            'test': len(truth),
         },
         'timings': {'train': train_seconds, 'infer': inference_seconds},
         'artifacts': {
@@ -863,7 +863,14 @@ def render_maps(payload: RenderMapsRequest) -> dict[str, Any]:
         'prediction': encode_map(prediction, valid),
         'error': base64.b64encode(buffer.getvalue()).decode('ascii'),
         'legend': [
-            {'classId': label, 'color': '#%02x%02x%02x' % tuple(palette[label % len(palette)])}
+            {
+                'classId': label,
+                'color': (
+                    f"#{int(palette[label % len(palette), 0]):02x}"
+                    f"{int(palette[label % len(palette), 1]):02x}"
+                    f"{int(palette[label % len(palette), 2]):02x}"
+                ),
+            }
             for label in np.unique(truth[valid]).astype(int).tolist()
         ],
     }
