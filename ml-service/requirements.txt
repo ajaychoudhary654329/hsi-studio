@@ -1,0 +1,16 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+numpy==2.2.0
+pandas==2.3.1
+scikit-learn==1.6.1
+pydantic==2.10.6
+python-multipart==0.0.9
+scipy==1.16.3
+spectral==0.24
+rasterio==1.4.3
+torch==2.15.0
+reportlab==5.1.0
+matplotlib==3.10.7
+optuna==4.6.0
+mlflow==3.5.1
+ultralytics==8.3.235
